@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Send, Sparkles, Bot, User, Trash2, Settings, MessageSquarePlus, StopCircle } from 'lucide-react';
+import { Send, Sparkles, Bot, User, Trash2, Settings, MessageSquarePlus, StopCircle, Braces } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-interface Message {
+interface LogEntry {
+  type: string;
+  message: string;
+}
+
+interface AIMessage {
   id: string;
   role: 'assistant' | 'user';
   content: string;
@@ -11,18 +16,18 @@ interface Message {
 }
 
 const AIPanel: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Hello! I'm your Antigravity AI assistant. Describe a task and I'll orchestrate the Planner → Coder → Reviewer pipeline.",
-      type: 'info'
-    }
-  ]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const chatId = useRef<string>(`ag_${Date.now()}`);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Load chat history on mount
+  useEffect(() => {
+    const history = JSON.parse(localStorage.getItem('ag_chats') || '{}');
+    const saved = history[chatId.current]?.logs;
+    if (saved) setLogs(saved);
+  }, []);
 
   // WebSocket log stream
   useEffect(() => {
@@ -30,49 +35,42 @@ const AIPanel: React.FC = () => {
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        const roleMap: Record<string, 'assistant' | 'user'> = {
-          info: 'assistant',
-          success: 'assistant',
-          error: 'assistant',
-          raw: 'assistant',
-        };
-        setMessages(prev => [...prev, {
-          id: Date.now().toString() + Math.random(),
-          role: roleMap[data.type] ?? 'assistant',
-          content: data.message || JSON.stringify(data),
-          type: data.type,
-        }]);
+        const data = JSON.parse(event.data) as LogEntry;
+        setLogs(prev => [...prev, data]);
       } catch {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: event.data,
-          type: 'raw',
-        }]);
+        setLogs(prev => [...prev, { type: 'raw', message: event.data }]);
       }
     };
 
     return () => ws.close();
   }, []);
 
+  // Persist logs to localStorage and notify sidebar
+  useEffect(() => {
+    if (!chatId.current || logs.length === 0) return;
+    const preview = logs.find(l => l.type === 'user')?.message || 'Agent Task...';
+    const history = JSON.parse(localStorage.getItem('ag_chats') || '{}');
+    history[chatId.current] = {
+      id: chatId.current,
+      timestamp: history[chatId.current]?.timestamp || Date.now(),
+      preview,
+      logs,
+    };
+    localStorage.setItem('ag_chats', JSON.stringify(history));
+    window.dispatchEvent(new Event('ag_chats_updated'));
+  }, [logs]);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [logs]);
 
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-    };
-
-    setMessages(prev => [...prev, userMsg]);
     const currentPrompt = input;
     setInput('');
     setIsProcessing(true);
+    setLogs(prev => [...prev, { type: 'user', message: currentPrompt }]);
 
     try {
       await axios.post('http://localhost:8000/api/chat', {
@@ -81,32 +79,31 @@ const AIPanel: React.FC = () => {
         chat_id: chatId.current,
       });
     } catch (e: any) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: 'Triad Error: ' + (e.message ?? 'Unknown error'),
-        type: 'error',
-      }]);
+      setLogs(prev => [...prev, { type: 'error', message: 'Triad Error: ' + (e.message ?? 'Unknown') }]);
     } finally {
       setIsProcessing(false);
+      window.dispatchEvent(new Event('ag_fs_updated'));
     }
   };
 
-  const handleClear = () => {
-    chatId.current = `ag_${Date.now()}`;
-    setMessages([{
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: "Chat cleared. Ready for a new task!",
-      type: 'info',
-    }]);
+  const handleCancel = async () => {
+    try {
+      await axios.post('http://localhost:8000/api/chat/cancel');
+    } catch (e) {
+      console.error('Failed to cancel workflow', e);
+    }
   };
 
-  const getMessageColor = (type?: string) => {
+  const handleNewChat = () => {
+    chatId.current = `ag_${Date.now()}`;
+    setLogs([]);
+    setInput('');
+  };
+
+  const getLogColor = (type: string) => {
     switch (type) {
       case 'success': return 'text-green-400';
       case 'error': return 'text-red-400';
-      case 'user': return 'text-gray-300';
       default: return 'text-gray-300';
     }
   };
@@ -120,32 +117,49 @@ const AIPanel: React.FC = () => {
           <span className="text-[11px] font-bold text-gray-200">AI AGENT CHAT</span>
         </div>
         <div className="flex items-center gap-1.5">
-           <button className="p-1 hover:bg-white/5 rounded transition-colors text-gray-500 hover:text-gray-300" title="New Chat" onClick={handleClear}>
-             <MessageSquarePlus size={14} />
-           </button>
-           <button className="p-1 hover:bg-white/5 rounded transition-colors text-gray-500 hover:text-gray-300" title="Clear" onClick={handleClear}>
-             <Trash2 size={14} />
-           </button>
+          <button
+            className="p-1 hover:bg-white/5 rounded transition-colors text-gray-500 hover:text-gray-300"
+            title="New Chat"
+            onClick={handleNewChat}
+          >
+            <MessageSquarePlus size={14} />
+          </button>
+          <button
+            className="p-1 hover:bg-white/5 rounded transition-colors text-gray-500 hover:text-gray-300"
+            title="Clear"
+            onClick={handleNewChat}
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages / Logs */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {messages.map((msg) => (
-          <div key={msg.id} className="flex flex-col gap-2">
+        {logs.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-gray-600 space-y-4 select-none">
+            <div className="p-4 bg-white/5 rounded-full border border-sidebar-border">
+              <Braces size={28} className="text-blue-500" strokeWidth={1.5} />
+            </div>
+            <p className="text-[13px] font-medium text-gray-500">Ask Gravity-Zero a task...</p>
+          </div>
+        )}
+
+        {logs.map((log, i) => (
+          <div key={i} className="flex flex-col gap-2 border-b border-sidebar-border pb-5 last:border-0">
             <div className="flex items-center gap-2">
               <div className={cn(
                 "w-6 h-6 rounded flex items-center justify-center",
-                msg.role === 'assistant' ? "bg-blue-600/20 text-blue-400" : "bg-gray-700 text-gray-300"
+                log.type === 'user' ? "bg-gray-700 text-gray-300" : "bg-blue-600/20 text-blue-400"
               )}>
-                {msg.role === 'assistant' ? <Bot size={14} /> : <User size={14} />}
+                {log.type === 'user' ? <User size={14} /> : <Bot size={14} />}
               </div>
               <span className="text-[11px] font-bold text-gray-400 uppercase">
-                {msg.role === 'assistant' ? 'Gravity-Zero' : 'You'}
+                {log.type === 'user' ? 'You' : 'Gravity-Zero'}
               </span>
             </div>
-            <div className={cn("text-[13px] leading-relaxed pl-8", getMessageColor(msg.type))}>
-              {msg.content}
+            <div className={cn("text-[13px] leading-relaxed pl-8 break-words whitespace-pre-wrap", getLogColor(log.type))}>
+              {log.message}
             </div>
           </div>
         ))}
@@ -169,22 +183,33 @@ const AIPanel: React.FC = () => {
             rows={1}
             disabled={isProcessing}
           />
-          <button
-            onClick={handleSend}
-            disabled={isProcessing}
-            className="absolute right-2.5 bottom-2.5 p-1 text-blue-500 hover:text-blue-400 transition-colors disabled:opacity-50"
-          >
-            {isProcessing ? <StopCircle size={16} className="text-red-400" /> : <Send size={16} />}
-          </button>
+          {isProcessing ? (
+            <button
+              onClick={handleCancel}
+              className="absolute right-2.5 bottom-2.5 p-1 text-red-400 hover:text-red-300 transition-colors"
+              title="Cancel generation"
+            >
+              <StopCircle size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className={cn(
+                "absolute right-2.5 bottom-2.5 p-1 transition-colors",
+                input.trim() ? "text-blue-500 hover:text-blue-400" : "text-gray-600"
+              )}
+            >
+              <Send size={16} />
+            </button>
+          )}
         </div>
         <div className="flex items-center justify-between mt-2 px-1">
-          <div className="flex gap-2">
-             <button className="p-1 hover:bg-white/5 rounded text-gray-500 hover:text-gray-300 transition-colors">
-               <Settings size={14} />
-             </button>
-          </div>
+          <button className="p-1 hover:bg-white/5 rounded text-gray-500 hover:text-gray-300 transition-colors">
+            <Settings size={14} />
+          </button>
           <span className="text-[10px] text-gray-600">
-            {isProcessing ? '⟳ Triad running...' : 'Enter to send'}
+            {isProcessing ? '⟳ Triad running...' : 'Enter to send · Shift+Enter for newline'}
           </span>
         </div>
       </div>
