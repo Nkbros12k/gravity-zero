@@ -1,0 +1,9 @@
+venv/
+node_modules/
+.env
+__pycache__/
+.ag_logs/
+*.mp4
+*.webm
+*.pyc
+.DS_Store
