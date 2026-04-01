@@ -1,63 +1,92 @@
 import React from 'react';
-import { 
-  GitBranch, 
-  AlertCircle, 
-  AlertTriangle, 
-  CheckCircle2, 
+import {
+  GitBranch,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
   Wifi,
-  Bot
+  WifiOff,
+  Bot,
 } from 'lucide-react';
 
 const StatusBar: React.FC = () => {
+  const [backendStatus, setBackendStatus] = React.useState<'connected' | 'disconnected'>('disconnected');
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/health');
+        if (mounted) setBackendStatus(res.ok ? 'connected' : 'disconnected');
+      } catch {
+        if (mounted) setBackendStatus('disconnected');
+      }
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 10_000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const isConnected = backendStatus === 'connected';
+
   return (
-    <div className="h-[22px] bg-blue-600 text-white flex items-center justify-between px-3 text-[11px] select-none">
+    <footer
+      className="h-[22px] bg-blue-600 text-white flex items-center justify-between px-3 text-[11px] select-none"
+      role="contentinfo"
+      aria-label="Status bar"
+    >
       <div className="flex items-center h-full">
-        <button className="flex items-center gap-1 px-2 h-full hover:bg-white/10 transition-colors">
-          <GitBranch size={13} />
-          <span>main*</span>
-        </button>
-        
+        <span className="flex items-center gap-1 px-2 h-full">
+          <GitBranch size={13} aria-hidden="true" />
+          <span>main</span>
+        </span>
+
         <div className="flex items-center gap-2 h-full px-2">
-          <div className="flex items-center gap-0.5 hover:bg-white/10 px-1 rounded transition-colors cursor-pointer">
-            <AlertCircle size={13} />
-            <span>0</span>
-          </div>
-          <div className="flex items-center gap-0.5 hover:bg-white/10 px-1 rounded transition-colors cursor-pointer">
-            <AlertTriangle size={13} />
-            <span>0</span>
-          </div>
+          <span className="flex items-center gap-0.5 px-1">
+            <AlertCircle size={13} aria-hidden="true" />
+            <span aria-label="0 errors">0</span>
+          </span>
+          <span className="flex items-center gap-0.5 px-1">
+            <AlertTriangle size={13} aria-hidden="true" />
+            <span aria-label="0 warnings">0</span>
+          </span>
         </div>
-        
-        <div className="h-3.5 w-[1px] bg-white/20 mx-1" />
-        
-        <button className="flex items-center gap-1.5 px-2 h-full hover:bg-white/10 transition-colors">
-          <CheckCircle2 size={13} />
+
+        <div className="h-3.5 w-[1px] bg-white/20 mx-1" aria-hidden="true" />
+
+        <span className="flex items-center gap-1.5 px-2 h-full">
+          <CheckCircle2 size={13} aria-hidden="true" />
           <span>Ready</span>
-        </button>
+        </span>
       </div>
 
       <div className="flex items-center h-full">
         <div className="flex items-center gap-3 px-3 h-full border-r border-white/10">
-          <div className="flex items-center gap-1 hover:bg-white/10 px-1 transition-colors cursor-pointer">
-            <Bot size={13} />
-            <span>Auto Accept: <span className="font-bold">ON</span></span>
-          </div>
-          <div className="flex items-center gap-1 hover:bg-white/10 px-1 transition-colors cursor-pointer">
-            <Bot size={13} className="text-gray-200" />
-            <span>Background: <span className="font-bold opacity-70">OFF</span></span>
-          </div>
+          <span className="flex items-center gap-1 px-1">
+            <Bot size={13} aria-hidden="true" />
+            <span>Gravity-Zero</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-3 px-3 h-full">
           <span>UTF-8</span>
-          <span>TypeScript JSX</span>
-          <div className="flex items-center gap-1">
-            <Wifi size={13} />
-            <span>Connected</span>
-          </div>
+          <span
+            className={`flex items-center gap-1 ${isConnected ? '' : 'opacity-70'}`}
+            aria-label={`Backend ${isConnected ? 'connected' : 'disconnected'}`}
+          >
+            {isConnected
+              ? <Wifi size={13} aria-hidden="true" />
+              : <WifiOff size={13} aria-hidden="true" />}
+            <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+          </span>
         </div>
       </div>
-    </div>
+    </footer>
   );
 };
 

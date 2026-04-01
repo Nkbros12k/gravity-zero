@@ -1,9 +1,31 @@
+# Python
 venv/
-node_modules/
-.env
+.venv/
 __pycache__/
+*.pyc
+*.pyo
 .ag_logs/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Media (large binaries)
 *.mp4
 *.webm
-*.pyc
-.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

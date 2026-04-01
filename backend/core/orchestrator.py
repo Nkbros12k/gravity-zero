@@ -83,7 +83,7 @@ async def run_triad_workflow(objective: str, context: str, emit_log: Callable[[s
             await log(f"Executing Terminal Command: `{step.command}`...", "info")
             try:
                 target_exec = getattr(plan, 'project_dir', '.')
-                cmd_res = execute_terminal(step.command, target_exec)
+                cmd_res = await execute_terminal(step.command, target_exec)
                 if cmd_res["exit_code"] == 0:
                     txt = cmd_res["stdout"][:500] if cmd_res["stdout"] else "Successfully completed"
                     await log(f"Terminal success:\n{txt}...", "success")

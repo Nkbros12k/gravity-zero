@@ -1,26 +1,38 @@
-import subprocess
+import asyncio
 import os
 from backend.core.config import WORKSPACE_DIR
 
-def run_command(command: str, cwd: str = ".") -> dict:
+COMMAND_TIMEOUT_SECONDS = 30
+
+
+async def run_command(command: str, cwd: str = ".") -> dict:
     target_cwd = os.path.abspath(os.path.join(WORKSPACE_DIR, cwd))
     try:
-        # Run command synchronously for simplicity in this MVP
-        result = subprocess.run(
+        process = await asyncio.create_subprocess_shell(
             command,
             cwd=target_cwd,
-            shell=True,
-            capture_output=True,
-            text=True
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=COMMAND_TIMEOUT_SECONDS,
         )
         return {
-            "exit_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr
+            "exit_code": process.returncode,
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
+        }
+    except asyncio.TimeoutError:
+        process.kill()
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"Command timed out after {COMMAND_TIMEOUT_SECONDS}s",
         }
     except Exception as e:
         return {
             "exit_code": -1,
             "stdout": "",
-            "stderr": str(e)
+            "stderr": str(e),
         }
